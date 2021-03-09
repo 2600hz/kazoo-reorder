@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2020, 2600Hz
+%%% @copyright (C) 2011-2021, 2600Hz
 %%% @doc handler for route requests, responds if reorder match
 %%% @author Karl Anderson
 %%%
@@ -17,17 +17,8 @@
 
 -spec handle_req(kz_json:object(), kz_term:proplist()) -> 'ok'.
 handle_req(JObj, Props) ->
-    AccountId = kz_json:get_value([<<"Custom-Channel-Vars">>, <<"Account-ID">>], JObj),
-    case kz_term:is_empty(AccountId) of
-        'false' -> 'ok';
-        'true' ->
-            lager:debug("received route request with no account-id"),
-            ControllerQ = props:get_value('queue', Props),
-            maybe_known_number(ControllerQ, JObj)
-    end.
-
--spec maybe_known_number(kz_term:ne_binary(), kz_json:object()) -> 'ok'.
-maybe_known_number(ControllerQ, JObj) ->
+    lager:debug("received route request"),
+    ControllerQ = props:get_value('queue', Props),
     Number = get_dest_number(JObj),
     case knm_numbers:lookup_account(Number) of
         {'ok', _, _} -> choose_response(ControllerQ, JObj, 'false', <<"known_number">>);
