@@ -17,6 +17,20 @@
 
 -spec handle_req(kz_json:object(), kz_term:proplist()) -> 'ok'.
 handle_req(JObj, Props) ->
+    case is_inbound(JObj) of
+        true -> handle_inbound(JObj, Props);
+        false -> ok
+    end.
+
+-spec is_inbound(kz_json:object()) -> boolean().
+is_inbound(JObj) ->
+    case kapi_route:inception(JObj) of
+        undefined -> false;
+        _Other -> true
+    end.
+
+-spec handle_inbound(kz_json:object(), kz_term:proplist()) -> 'ok'.
+handle_inbound(JObj, Props) ->
     lager:debug("received route request"),
     ControllerQ = props:get_value('queue', Props),
     Number = get_dest_number(JObj),
