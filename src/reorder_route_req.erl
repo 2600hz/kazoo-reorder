@@ -76,7 +76,7 @@ send_response(RouteReq, ControllerQ, ShouldDefer, Code, Message) ->
            ,{<<"Method">>, <<"error">>}
            ,{<<"Route-Error-Code">>, Code}
            ,{<<"Route-Error-Message">>, Message}
-           ,{<<"ShouldDefer-Response">>, ShouldDefer}
+           ,{<<"Defer-Response">>, ShouldDefer}
            | kz_api:default_headers(ControllerQ, ?APP_NAME, ?APP_VERSION)
            ],
     kapi_route:publish_resp(kz_api:server_id(RouteReq), Resp).
@@ -97,7 +97,7 @@ send_transfer(RouteReq, ControllerQ, ShouldDefer, Number) ->
     Resp = [{<<"Msg-ID">>, kz_api:msg_id(RouteReq)}
            ,{<<"Method">>, <<"bridge">>}
            ,{<<"Routes">>, [Route]}
-           ,{<<"ShouldDefer-Response">>, ShouldDefer}
+           ,{<<"Defer-Response">>, ShouldDefer}
            | kz_api:default_headers(ControllerQ, ?APP_NAME, ?APP_VERSION)
            ],
     kapi_route:publish_resp(kz_api:server_id(RouteReq), Resp).
@@ -123,7 +123,7 @@ send_bridge(RouteReq, ControllerQ, ShouldDefer, _Type, {'ok', Routes}) ->
     Resp = [{<<"Msg-ID">>, kz_api:msg_id(RouteReq)}
            ,{<<"Method">>, <<"bridge">>}
            ,{<<"Routes">>, Routes}
-           ,{<<"ShouldDefer-Response">>, ShouldDefer}
+           ,{<<"Defer-Response">>, ShouldDefer}
            | kz_api:default_headers(ControllerQ, ?APP_NAME, ?APP_VERSION)
            ],
     kapi_route:publish_resp(kz_api:server_id(RouteReq), Resp);
