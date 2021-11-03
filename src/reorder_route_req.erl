@@ -44,7 +44,7 @@ handle_inbound(RouteReq, Props, Call) ->
     ControllerQ = props:get_value('queue', Props),
     Number = get_dest_number(Call),
     case knm_numbers:lookup_account(Number) of
-        {'ok', _, _} -> choose_response(RouteReq, ControllerQ, 'false', <<"known_number">>);
+        {'ok', _, _} -> choose_response(RouteReq, ControllerQ, 'true', <<"known_number">>);
         {'error', _R} ->
             lager:debug("~s is not associated with any account, ~p", [Number, _R]),
             ShouldDefer = should_defer_response(Number, RouteReq),
