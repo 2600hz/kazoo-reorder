@@ -52,44 +52,60 @@ handle_inbound(RouteReq, Props, Call) ->
     end.
 
 -spec choose_response(kapi_route:req(), kz_term:ne_binary(), boolean(), kz_term:ne_binary()) -> 'ok'.
-choose_response(RouteReq, ControllerQ, Reconcilable, Type) ->
+choose_response(RouteReq, ControllerQ, ShouldDefer, Type) ->
     case kapps_config:get_ne_binary(?CONFIG_CAT, [Type, <<"action">>], <<"respond">>) of
-        <<"respond">> -> send_response(RouteReq, ControllerQ, Reconcilable, Type);
-        <<"transfer">> -> maybe_send_transfer(RouteReq, ControllerQ, Reconcilable, Type);
-        <<"bridge">> -> maybe_send_bridge(RouteReq, ControllerQ, Reconcilable, Type)
+        <<"respond">> -> send_error_response(RouteReq, ControllerQ, ShouldDefer, Type);
+        <<"transfer">> -> maybe_send_transfer(RouteReq, ControllerQ, ShouldDefer, Type);
+        <<"bridge">> -> maybe_send_bridge(RouteReq, ControllerQ, ShouldDefer, Type)
     end.
 
--spec send_response(kapi_route:req(), kz_term:ne_binary(), boolean(), kz_term:ne_binary()) -> 'ok'.
-send_response(RouteReq, ControllerQ, Reconcilable, <<"unknown_number">> = Type) ->
-    Code = kapps_config:get_binary(?APP_NAME, [Type, <<"response_code">>], <<"604">>),
-    Message = kapps_config:get_binary(?APP_NAME, [Type, <<"response_message">>], <<"Nope Nope Nope">>),
-    send_response(RouteReq, ControllerQ, Reconcilable, Code, Message);
-send_response(RouteReq, ControllerQ, Reconcilable, <<"known_number">> = Type) ->
-    Code = kapps_config:get_binary(?APP_NAME, [Type, <<"response_code">>], <<"686">>),
-    Message = kapps_config:get_binary(?APP_NAME, [Type, <<"response_message">>], <<"PICNIC">>),
-    send_response(RouteReq, ControllerQ, Reconcilable, Code, Message).
+-spec send_error_response(kz_json:object(), kz_term:ne_binary(), boolean(), kz_term:ne_binary()) -> 'ok'.
+send_error_response(RouteReq, ControllerQ, ShouldDefer, Type) ->
+    Response = [{<<"Msg-ID">>, kz_json:get_value(<<"Msg-ID">>, RouteReq)}
+               ,{<<"Method">>, <<"error">>}
+               ,{<<"Defer-Response">>, ShouldDefer}
+               ,{<<"Custom-Channel-Vars">>, kz_json:from_list([{<<"Reorder-Type">>, Type}])}
+                | kz_api:default_headers(ControllerQ, ?APP_NAME, ?APP_VERSION)
+               ],
+    case Type of
+         <<"unknown_number">> ->
+            Updates = [{<<"Route-Error-Code">>
+                       ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_code">>], <<"604">>)
+                       }
+                      ,{<<"Route-Error-Message">>
+                       ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_message">>], <<"Nope Nope Nope">>)
+                       }
+                      ],
+            send_response(RouteReq, props:set_values(Updates, Response));
+        <<"known_number">> ->
+            Updates = [{<<"Route-Error-Code">>
+                       ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_code">>], <<"686">>)
+                       }
+                      ,{<<"Route-Error-Message">>
+                       ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_message">>], <<"PICNIC">>)
+                       }
+                      ],
+            send_response(RouteReq, props:set_values(Updates, Response))
+    end.
 
--spec send_response(kapi_route:req(), kz_term:ne_binary(), boolean(), kz_term:ne_binary(), kz_term:api_binary()) -> 'ok'.
-send_response(RouteReq, ControllerQ, ShouldDefer, Code, Message) ->
-    lager:debug("sending response: ~s ~s (defer: ~p)", [Code, Message, ShouldDefer]),
-    Resp = [{<<"Msg-ID">>, kz_api:msg_id(RouteReq)}
-           ,{<<"Method">>, <<"error">>}
-           ,{<<"Route-Error-Code">>, Code}
-           ,{<<"Route-Error-Message">>, Message}
-           ,{<<"Defer-Response">>, ShouldDefer}
-           | kz_api:default_headers(ControllerQ, ?APP_NAME, ?APP_VERSION)
-           ],
-    kapi_route:publish_resp(kz_api:server_id(RouteReq), Resp).
--spec maybe_send_transfer(kapi_route:req(), kz_term:ne_binary(), boolean(), kz_term:ne_binary()) -> 'ok'.
-maybe_send_transfer(RouteReq, ControllerQ, Reconcilable, Type) ->
+-spec send_response(kz_json:object(), kz_json:object()) -> 'ok'.
+send_response(RouteReq, Response) ->
+    Code = kz_json:get_ne_value(<<"Route-Error-Code">>, Response),
+    Message = kz_json:get_ne_value(<<"Route-Error-Message">>, Response),
+    Type = kz_json:get_ne_value([<<"Custom-Channel-Vars">>, <<"Reorder-Type">>], Response),
+    kapi_route:publish_resp(kz_api:server_id(RouteReq), Response),
+    lager:debug("sent error response for ~s as: ~s ~s", [Type, Code, Message]).
+
+-spec maybe_send_transfer(kz_json:object(), kz_term:ne_binary(), boolean(), kz_term:ne_binary()) -> 'ok'.
+maybe_send_transfer(RouteReq, ControllerQ, ShouldDefer, Type) ->
     case kapps_config:get_ne_binary(?CONFIG_CAT, [Type, <<"transfer_target">>]) of
-        'undefined' -> send_response(RouteReq, ControllerQ, Reconcilable, Type);
-        Number -> send_transfer(RouteReq, ControllerQ, Reconcilable, Number)
+        'undefined' -> send_error_response(RouteReq, ControllerQ, ShouldDefer, Type);
+        Number -> send_transfer(RouteReq, ControllerQ, ShouldDefer, Type, Number)
     end.
 
--spec send_transfer(kapi_route:req(), kz_term:ne_binary(), boolean(), kz_term:ne_binary()) -> 'ok'.
-send_transfer(RouteReq, ControllerQ, ShouldDefer, Number) ->
-    lager:debug("sending transfer to ~s", [Number]),
+-spec send_transfer(kapi_route:req(), kz_term:ne_binary(), boolean(), kz_term:ne_binary(), kz_term:ne_binary()) -> 'ok'.
+send_transfer(RouteReq, ControllerQ, ShouldDefer, _Type, Number) ->
+    lager:debug("sending transfer to ~s for error type ~s", [Number, _Type]),
     Route = kz_json:from_list([{<<"Invite-Format">>, <<"loopback">>}
                               ,{<<"Route">>, Number}
                               ,{<<"To-DID">>, Number}
@@ -109,7 +125,7 @@ maybe_send_bridge(RouteReq, ControllerQ, ShouldDefer, Type) ->
     case kz_term:is_empty(AccountId)
         orelse kz_term:is_empty(EndpointId)
     of
-        'true' -> send_response(RouteReq, ControllerQ, ShouldDefer, Type);
+        'true' -> send_error_response(RouteReq, ControllerQ, ShouldDefer, Type);
         'false' ->
             Routines = [{fun kapps_call:set_account_id/2, AccountId}],
             Call = kapps_call:exec(Routines, kapps_call:from_route_req(RouteReq)),
@@ -119,7 +135,7 @@ maybe_send_bridge(RouteReq, ControllerQ, ShouldDefer, Type) ->
 
 -spec send_bridge(kapi_route:req(), kz_term:ne_binary(), boolean(), kz_term:ne_binary(), kz_term:jobjs_return()) -> 'ok'.
 send_bridge(RouteReq, ControllerQ, ShouldDefer, _Type, {'ok', Routes}) ->
-    lager:debug("sending bridge to endpoint"),
+    lager:debug("sending bridge to endpoint for error type ~s", [_Type]),
     Resp = [{<<"Msg-ID">>, kz_api:msg_id(RouteReq)}
            ,{<<"Method">>, <<"bridge">>}
            ,{<<"Routes">>, Routes}
@@ -127,8 +143,8 @@ send_bridge(RouteReq, ControllerQ, ShouldDefer, _Type, {'ok', Routes}) ->
            | kz_api:default_headers(ControllerQ, ?APP_NAME, ?APP_VERSION)
            ],
     kapi_route:publish_resp(kz_api:server_id(RouteReq), Resp);
-send_bridge(RouteReq, ControllerQ, Type, Reconcilable, _) ->
-    send_response(RouteReq, ControllerQ, Type, Reconcilable).
+send_bridge(RouteReq, ControllerQ, ShouldDefer, Type, _) ->
+    send_error_response(RouteReq, ControllerQ, ShouldDefer, Type).
 
 -spec get_dest_number(kapps_call:call()) -> kz_term:ne_binary().
 get_dest_number(Call) ->
