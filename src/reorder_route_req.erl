@@ -64,7 +64,7 @@ send_error_response(RouteReq, ControllerQ, ShouldDefer, Type) ->
     Response = [{<<"Msg-ID">>, kz_json:get_value(<<"Msg-ID">>, RouteReq)}
                ,{<<"Method">>, <<"error">>}
                ,{<<"Defer-Response">>, ShouldDefer}
-               ,{<<"Custom-Channel-Vars">>, kz_json:from_list([{<<"Reorder-Type">>, Type}])}
+               ,{<<"Custom-Channel-Vars">>, kz_json:from_list([{<<"Reorder-Reason">>, Type}])}
                 | kz_api:default_headers(ControllerQ, ?APP_NAME, ?APP_VERSION)
                ],
     case Type of
@@ -92,7 +92,7 @@ send_error_response(RouteReq, ControllerQ, ShouldDefer, Type) ->
 send_response(RouteReq, Response) ->
     Code = kz_json:get_ne_value(<<"Route-Error-Code">>, Response),
     Message = kz_json:get_ne_value(<<"Route-Error-Message">>, Response),
-    Type = kz_json:get_ne_value([<<"Custom-Channel-Vars">>, <<"Reorder-Type">>], Response),
+    Type = kz_json:get_ne_value([<<"Custom-Channel-Vars">>, <<"Reorder-Reason">>], Response),
     kapi_route:publish_resp(kz_api:server_id(RouteReq), Response),
     lager:debug("sent error response for ~s as: ~s ~s", [Type, Code, Message]).
 
