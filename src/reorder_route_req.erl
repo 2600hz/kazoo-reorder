@@ -61,7 +61,7 @@ choose_response(RouteReq, ControllerQ, ShouldDefer, Type) ->
 
 -spec send_error_response(kz_json:object(), kz_term:ne_binary(), boolean(), kz_term:ne_binary()) -> 'ok'.
 send_error_response(RouteReq, ControllerQ, ShouldDefer, Type) ->
-    Response = [{<<"Msg-ID">>, kz_json:get_value(<<"Msg-ID">>, RouteReq)}
+    Response = [{<<"Msg-ID">>, kz_api:msg_id(RouteReq)}
                ,{<<"Method">>, <<"error">>}
                ,{<<"Defer-Response">>, ShouldDefer}
                ,{<<"Custom-Channel-Vars">>, kz_json:from_list([{<<"Reorder-Reason">>, Type}])}
