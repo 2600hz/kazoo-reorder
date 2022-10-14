@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @copyright (C) 2011-2021, 2600Hz
+%%% @copyright (C) 2011-2022, 2600Hz
 %%% @doc handler for route requests, responds if reorder match
 %%% @author Karl Anderson
 %%%
@@ -65,10 +65,10 @@ send_error_response(RouteReq, ControllerQ, ShouldDefer, Type) ->
                ,{<<"Method">>, <<"error">>}
                ,{<<"Defer-Response">>, ShouldDefer}
                ,{<<"Custom-Channel-Vars">>, kz_json:from_list([{<<"Reorder-Reason">>, Type}])}
-                | kz_api:default_headers(ControllerQ, ?APP_NAME, ?APP_VERSION)
+               | kz_api:default_headers(ControllerQ, ?APP_NAME, ?APP_VERSION)
                ],
     case Type of
-         <<"unknown_number">> ->
+        <<"unknown_number">> ->
             Updates = [{<<"Route-Error-Code">>
                        ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_code">>], <<"604">>)
                        }
