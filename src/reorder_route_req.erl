@@ -17,8 +17,15 @@
 
 -spec handle_req(kapi_route:req(), kz_term:proplist()) -> 'ok'.
 handle_req(RouteReq, Props) ->
-    case is_inbound(RouteReq) of
-        'true' -> handle_inbound(RouteReq, Props, kapps_call:from_route_req(RouteReq));
+    Call = kapps_call:from_route_req(RouteReq),
+    IsCallForward = kapps_call:is_call_forward(Call),
+    case is_inbound(RouteReq)
+        orelse IsCallForward
+    of
+        'true' when IsCallForward ->
+            handle_call_forward(RouteReq, Props, Call);
+        'true' ->
+            handle_inbound(RouteReq, Props, Call);
         'false' -> 'ok'
     end.
 
@@ -38,13 +45,22 @@ should_defer_response(Number, RouteReq) ->
 is_transfer(RouteReq) ->
     kz_json:is_true(<<"Is-Transfer">>, RouteReq).
 
+-spec handle_call_forward(kapi_route:req(), kz_term:proplist(), kapps_call:call()) -> 'ok'.
+handle_call_forward(RouteReq, Props, Call) ->
+    lager:debug("received cfw route request"),
+    ControllerQ = props:get_value('queue', Props),
+    Number = get_dest_number(Call),
+    lager:debug("adding a refer respond for forwarded call to ~s", [Number]),
+    send_error_response(RouteReq, ControllerQ, 'true', <<"forwarded_call">>).
+
 -spec handle_inbound(kapi_route:req(), kz_term:proplist(), kapps_call:call()) -> 'ok'.
 handle_inbound(RouteReq, Props, Call) ->
     lager:debug("received route request"),
     ControllerQ = props:get_value('queue', Props),
     Number = get_dest_number(Call),
     case knm_numbers:lookup_account(Number) of
-        {'ok', _, _} -> choose_response(RouteReq, ControllerQ, 'true', <<"known_number">>);
+        {'ok', _, _} ->
+            choose_response(RouteReq, ControllerQ, 'true', <<"known_number">>);
         {'error', _R} ->
             lager:debug("~s is not associated with any account, ~p", [Number, _R]),
             ShouldDefer = should_defer_response(Number, RouteReq),
@@ -67,26 +83,34 @@ send_error_response(RouteReq, ControllerQ, ShouldDefer, Type) ->
                ,{<<"Custom-Channel-Vars">>, kz_json:from_list([{<<"Reorder-Reason">>, Type}])}
                | kz_api:default_headers(ControllerQ, ?APP_NAME, ?APP_VERSION)
                ],
-    case Type of
-        <<"unknown_number">> ->
-            Updates = [{<<"Route-Error-Code">>
-                       ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_code">>], <<"604">>)
-                       }
-                      ,{<<"Route-Error-Message">>
-                       ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_message">>], <<"Nope Nope Nope">>)
-                       }
-                      ],
-            send_response(RouteReq, props:set_values(Updates, Response));
-        <<"known_number">> ->
-            Updates = [{<<"Route-Error-Code">>
-                       ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_code">>], <<"686">>)
-                       }
-                      ,{<<"Route-Error-Message">>
-                       ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_message">>], <<"PICNIC">>)
-                       }
-                      ],
-            send_response(RouteReq, props:set_values(Updates, Response))
-    end.
+    Updates = error_response_by_type(Type),
+    send_response(RouteReq, props:set_values(Updates, Response)).
+
+-spec error_response_by_type(kz_term:ne_binary()) -> kz_term:proplist().
+error_response_by_type(<<"unknown_number">> = Type) ->
+    [{<<"Route-Error-Code">>
+     ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_code">>], <<"604">>)
+     }
+    ,{<<"Route-Error-Message">>
+     ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_message">>], <<"Nope Nope Nope">>)
+     }
+    ];
+error_response_by_type(<<"known_number">> = Type) ->
+    [{<<"Route-Error-Code">>
+     ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_code">>], <<"686">>)
+     }
+    ,{<<"Route-Error-Message">>
+     ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_message">>], <<"PICNIC">>)
+     }
+    ];
+error_response_by_type(<<"forwarded_call">> = Type) ->
+    [{<<"Route-Error-Code">>
+     ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_code">>], <<"404">>)
+     }
+    ,{<<"Route-Error-Message">>
+     ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_message">>], <<"NO_ROUTE_DESTINATION">>)
+     }
+    ].
 
 -spec send_response(kz_json:object(), kz_json:object()) -> 'ok'.
 send_response(RouteReq, Response) ->
