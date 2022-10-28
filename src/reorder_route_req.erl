@@ -50,13 +50,8 @@ handle_call_forward(RouteReq, Props, Call) ->
     lager:debug("received cfw route request"),
     ControllerQ = props:get_value('queue', Props),
     Number = get_dest_number(Call),
-    case knm_numbers:lookup_account(Number) of
-        {'ok', _, _} ->
-            'ok';
-        {'error', _R} ->
-            lager:debug("~s is not associated with any account, ~p", [Number, _R]),
-            maybe_send_transfer(RouteReq, ControllerQ, 'true', <<"call_forward_outbound">>)
-    end.
+    lager:debug("adding a refer respond for forwarded call to ~s", [Number]),
+    send_error_response(RouteReq, ControllerQ, 'true', <<"forwarded_call">>).
 
 -spec handle_inbound(kapi_route:req(), kz_term:proplist(), kapps_call:call()) -> 'ok'.
 handle_inbound(RouteReq, Props, Call) ->
@@ -108,7 +103,7 @@ error_response_by_type(<<"known_number">> = Type) ->
      ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_message">>], <<"PICNIC">>)
      }
     ];
-error_response_by_type(<<"call_forward_outbound">> = Type) ->
+error_response_by_type(<<"forwarded_call">> = Type) ->
     [{<<"Route-Error-Code">>
      ,kapps_config:get_binary(?APP_NAME, [Type, <<"response_code">>], <<"404">>)
      }
