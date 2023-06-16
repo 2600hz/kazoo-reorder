@@ -84,7 +84,7 @@ send_error_response(RouteReq, ControllerQ, ShouldDefer, Type) ->
                | kz_api:default_headers(ControllerQ, ?APP_NAME, ?APP_VERSION)
                ],
     Updates = error_response_by_type(Type),
-    send_response(RouteReq, props:set_values(Updates, Response)).
+    send_response(RouteReq, kz_json:from_list(props:set_values(Updates, Response))).
 
 -spec error_response_by_type(kz_term:ne_binary()) -> kz_term:proplist().
 error_response_by_type(<<"unknown_number">> = Type) ->
